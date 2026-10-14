@@ -72,9 +72,11 @@ generate_trust_policy() {
     local role_name=$4
     local output_dir=$5
     local output_file="$output_dir/github-oidc-trust-policy.json"
+    local temp_file
 
     mkdir -p "$output_dir"
-    cat > "$output_file" <<EOF
+    temp_file=$(mktemp "$output_dir/.github-oidc-trust-policy.json.XXXXXX")
+    cat > "$temp_file" <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -89,7 +91,12 @@ generate_trust_policy() {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:${owner}/${repository}:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": [
+            "repo:${owner}/${repository}:ref:refs/heads/main",
+            "repo:${owner}/${repository}:environment:dev",
+            "repo:${owner}/${repository}:environment:staging",
+            "repo:${owner}/${repository}:environment:prod"
+          ]
         }
       }
     }
@@ -97,7 +104,13 @@ generate_trust_policy() {
 }
 EOF
 
+  if [[ -f "$output_file" ]] && cmp -s "$temp_file" "$output_file"; then
+    rm -f -- "$temp_file"
+    printf 'Trust policy sin cambios: %s\n' "$output_file"
+  else
+    mv -- "$temp_file" "$output_file"
     printf 'Trust policy generada: %s\n' "$output_file"
+  fi
     printf 'Role esperado: arn:aws:iam::%s:role/%s\n' "$account_id" "$role_name"
 }
 

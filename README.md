@@ -104,8 +104,9 @@ guardan claves AWS de larga duracion en GitHub.
 ### 1. Crear el rol de despliegue en AWS
 
 Crea un IAM role dedicado, por ejemplo `github-actions-lambda-deploy`, con una trust
-policy que permita a GitHub emitir tokens OIDC solo para este repositorio y la rama
-`main`. Sustituye `AWS_ACCOUNT_ID` y `OWNER/REPOSITORY`:
+policy que permita a GitHub emitir tokens OIDC solo para este repositorio, la rama
+`main` y los entornos usados por el workflow. Sustituye `AWS_ACCOUNT_ID` y
+`OWNER/REPOSITORY`:
 
 ```json
 {
@@ -116,7 +117,12 @@ policy que permita a GitHub emitir tokens OIDC solo para este repositorio y la r
 		"Action": "sts:AssumeRoleWithWebIdentity",
 		"Condition": {
 			"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
-			"StringLike": {"token.actions.githubusercontent.com:sub": "repo:OWNER/REPOSITORY:ref:refs/heads/main"}
+			"StringLike": {"token.actions.githubusercontent.com:sub": [
+				"repo:OWNER/REPOSITORY:ref:refs/heads/main",
+				"repo:OWNER/REPOSITORY:environment:dev",
+				"repo:OWNER/REPOSITORY:environment:staging",
+				"repo:OWNER/REPOSITORY:environment:prod"
+			]}
 		}
 	}]
 }
