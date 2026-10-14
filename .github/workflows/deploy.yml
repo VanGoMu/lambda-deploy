@@ -1,9 +1,14 @@
 name: Deploy SAM
 on:
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - 'src/**'
+  push:
+    branches: [main]
+    inputs:
+      environment:
+        description: Environment
+        default: dev
+        type: string
+    # paths:
+    #   - 'src/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -24,7 +29,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
-      - run: pytest
+      - run: python -m pytest
   deploy:
     needs: test
     runs-on: ubuntu-latest
