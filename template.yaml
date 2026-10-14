@@ -14,10 +14,6 @@ Parameters:
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
-  UseCanary:
-    Type: String
-    AllowedValues: ["true", "false"]
-    Default: "false"
   ApiStageName:
     Type: String
     Default: "$default"
@@ -33,7 +29,6 @@ Parameters:
 Conditions:
   HasApiGateway: !Equals [!Ref UseApiGateway, "true"]
   HasAlb: !Equals [!Ref UseAlb, "true"]
-  HasCanary: !Equals [!Ref UseCanary, "true"]
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
   HasAlbNetwork: !And
     - !Condition HasAlb
@@ -72,7 +67,7 @@ Resources:
       Role: !GetAtt FunctionRole.Arn
       AutoPublishAlias: live
       DeploymentPreference:
-        Enabled: !If [HasCanary, true, false]
+        Enabled: false
         Type: Canary10Percent5Minutes
         PassthroughCondition: true
         Alarms:
