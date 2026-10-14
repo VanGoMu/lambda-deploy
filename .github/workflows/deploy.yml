@@ -31,7 +31,7 @@ jobs:
   #     - run: pip install -r requirements.txt -r requirements-dev.txt
   #     - run: python -m pytest
   deploy:
-    needs: test
+  #  needs: test
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'dev' }}
     permissions:
