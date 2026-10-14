@@ -1,0 +1,7 @@
+{
+  "Environment": "prod",
+  "UseApiGateway": "true",
+  "UseAlb": "false",
+  "UseCanary": "true",
+  "AlarmEmail": "ops@example.com"
+}

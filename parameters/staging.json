@@ -1,0 +1,6 @@
+{
+  "Environment": "staging",
+  "UseApiGateway": "true",
+  "UseAlb": "false",
+  "UseCanary": "true"
+}

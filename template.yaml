@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Lambda multiproposito con API Gateway, ALB y canary opcionales
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: dev
+  UseApiGateway:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+  UseAlb:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+  UseCanary:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+  ApiStageName:
+    Type: String
+    Default: "$default"
+  AlbSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+  AlbSecurityGroupId:
+    Type: String
+    Default: ""
+  AlarmEmail:
+    Type: String
+    Default: ""
+Conditions:
+  HasApiGateway: !Equals [!Ref UseApiGateway, "true"]
+  HasAlb: !Equals [!Ref UseAlb, "true"]
+  HasCanary: !Equals [!Ref UseCanary, "true"]
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+  HasAlbNetwork: !And
+    - !Condition HasAlb
+    - !Not [!Equals [!Join [",", !Ref AlbSubnetIds], ""]]
+    - !Not [!Equals [!Ref AlbSecurityGroupId, ""]]
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 10
+    Tracing: Active
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+Resources:
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+  Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "multipurpose-${Environment}"
+      Handler: src/app.handler
+      CodeUri: .
+      Role: !GetAtt FunctionRole.Arn
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Enabled: !If [HasCanary, true, false]
+        Type: Canary10Percent5Minutes
+        PassthroughCondition: true
+        Alarms:
+          - !Ref FunctionErrorAlarm
+          - !Ref FunctionThrottleAlarm
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Condition: HasApiGateway
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /hello
+            Method: GET
+        AlbEvent:
+          Type: ALB
+          Condition: HasAlb
+          Properties:
+            ListenerArn: !Ref AlbListener
+            Priority: 1
+            Conditions:
+              Path:
+                Values: ["/hello"]
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Condition: HasApiGateway
+    Properties:
+      StageName: !Ref ApiStageName
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
+  Alb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Condition: HasAlbNetwork
+    Properties:
+      Name: !Sub "lambda-alb-${Environment}"
+      Scheme: internet-facing
+      Type: application
+      Subnets: !Ref AlbSubnetIds
+      SecurityGroups: [!Ref AlbSecurityGroupId]
+  AlbTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: HasAlb
+    Properties:
+      Name: !Sub "lambda-tg-${Environment}"
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt Function.Arn
+  AlbListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasAlbNetwork
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AlbTargetGroup
+  LambdaAlbPermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasAlb
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+  FunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "multipurpose-${Environment}-errors"
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Function
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  FunctionThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "multipurpose-${Environment}-throttles"
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Function
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmEmail
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmEmail
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+Outputs:
+  FunctionArn:
+    Value: !GetAtt Function.Arn
+  FunctionAliasArn:
+    Value: !Sub "${Function.Arn}:live"
+  ApiEndpoint:
+    Condition: HasApiGateway
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiStageName}/hello"
+  AlbDnsName:
+    Condition: HasAlbNetwork
+    Value: !GetAtt Alb.DNSName

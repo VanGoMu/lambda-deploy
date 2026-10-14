@@ -1,0 +1,6 @@
+{
+  "Environment": "dev",
+  "UseApiGateway": "false",
+  "UseAlb": "false",
+  "UseCanary": "false"
+}

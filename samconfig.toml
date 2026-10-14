@@ -1,0 +1,36 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "lambda-multipurpose-dev"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+s3_prefix = "lambda-multipurpose-dev"
+
+[dev.deploy.parameters]
+stack_name = "lambda-multipurpose-dev"
+region = "eu-west-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+s3_prefix = "lambda-multipurpose-dev"
+parameter_overrides = "Environment=dev UseApiGateway=false UseAlb=false UseCanary=false"
+
+[staging.deploy.parameters]
+stack_name = "lambda-multipurpose-staging"
+region = "eu-west-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+s3_prefix = "lambda-multipurpose-staging"
+parameter_overrides = "Environment=staging UseApiGateway=true UseAlb=false UseCanary=true"
+
+[prod.deploy.parameters]
+stack_name = "lambda-multipurpose-prod"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+s3_prefix = "lambda-multipurpose-prod"
+parameter_overrides = "Environment=prod UseApiGateway=true UseAlb=false UseCanary=true AlarmEmail=ops@example.com"
