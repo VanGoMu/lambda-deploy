@@ -2,11 +2,6 @@ name: Deploy SAM
 on:
   push:
     branches: [main]
-    inputs:
-      environment:
-        description: Environment
-        default: dev
-        type: string
     # paths:
     #   - 'src/**'
   workflow_dispatch:
