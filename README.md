@@ -12,6 +12,8 @@ Los entornos configurados son `dev`, `staging` y `prod`.
 
 - Python 3.12.
 - AWS SAM CLI 1.127 o posterior.
+- AWS CLI v1 (`aws`, se instala con `make install`).
+- GitHub CLI (`gh`), necesaria para configurar el secreto del repositorio.
 - Una cuenta AWS y credenciales locales configuradas para las pruebas de SAM.
 - GNU Make (opcional, pero recomendado).
 
@@ -20,6 +22,16 @@ Instala las dependencias del proyecto con:
 ```bash
 make install
 ```
+
+Comprueba todas las herramientas locales con:
+
+```bash
+make check-dependencies
+```
+
+`gh` debe instalarse como herramienta del sistema y autenticarse con `gh auth login`.
+En Ubuntu/Debian puede instalarse siguiendo la [guia oficial de GitHub CLI](https://github.com/cli/cli/blob/trunk/docs/install_linux.md); en macOS, con
+`brew install gh`. La instalacion de `aws` queda incluida en `requirements-dev.txt`.
 
 ## Primeras pruebas locales
 
@@ -35,10 +47,9 @@ sam validate --template-file template.yaml
 `sam validate` comprueba la sintaxis y la transformacion SAM; no crea recursos ni
 valida que la cuenta tenga todos los permisos necesarios.
 
-Con el estado actual del repositorio, `sam validate` puede fallar en `Function.AlbEvent`
-porque SAM no reconoce `ALB` como tipo de evento en esa declaracion. Ese resultado es
-conocido y confirma que la plantilla necesita correccion antes de desplegarla; no lo
-silencies en CI ni uses el workflow para produccion hasta resolverlo.
+La integracion con ALB y HTTP API se declara mediante recursos CloudFormation
+condicionados en `template.yaml`, porque SAM no admite `ALB` como tipo de evento.
+Si la validacion falla, corrige el error antes de desplegar y no lo silencies en CI.
 
 Para construir el artefacto local:
 
@@ -199,11 +210,19 @@ en AWS; deja el JSON en `.generated/aws/` para revisarlo antes de aplicarlo al r
 
 ```bash
 make configure-aws \
-	AWS_ACCOUNT_ID=123456789012 \
 	ROLE_NAME=github-actions-lambda-deploy
 ```
 
 El script obtiene `OWNER/REPOSITORY` automáticamente desde `git remote get-url origin`.
+También obtiene `AWS_ACCOUNT_ID` con `aws sts get-caller-identity` usando las
+credenciales activas. Para usar otra cuenta o sobrescribir el valor detectado:
+
+```bash
+make configure-aws AWS_ACCOUNT_ID=123456789012
+```
+
+Puedes seleccionar el perfil AWS antes de ejecutar el comando con
+`AWS_PROFILE=mi-perfil make configure-aws`.
 
 El proveedor OIDC y el IAM role deben existir en AWS. La politica de permisos del role
 debe cubrir los recursos que despliegue SAM y se debe revisar con el principio de menor

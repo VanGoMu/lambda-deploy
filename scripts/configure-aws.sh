@@ -5,10 +5,11 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 usage() {
     cat <<'EOF'
-Uso: scripts/configure-aws.sh AWS_ACCOUNT_ID [ROLE_NAME]
+Uso: scripts/configure-aws.sh [AWS_ACCOUNT_ID] [ROLE_NAME]
 
 Obtiene OWNER/REPOSITORY desde el remoto origin y genera la trust policy para que
-GitHub Actions asuma un IAM role mediante OIDC.
+GitHub Actions asuma un IAM role mediante OIDC. Si no se proporciona
+AWS_ACCOUNT_ID, lo obtiene de la identidad AWS activa.
 La policy se escribe en .generated/aws/github-oidc-trust-policy.json.
 EOF
 }
@@ -16,6 +17,20 @@ EOF
 fail() {
     printf 'Error: %s\n' "$1" >&2
     exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "No se encontro '$1'. Instalalo antes de continuar."
+}
+
+get_account_id() {
+  local account_id
+
+  require_command aws
+  account_id=$(AWS_PAGER="" aws sts get-caller-identity \
+    --query Account --output text 2>/dev/null) || \
+    fail "No se pudo obtener AWS_ACCOUNT_ID con las credenciales activas"
+  printf '%s\n' "$account_id"
 }
 
 validate_input() {
@@ -87,12 +102,12 @@ EOF
 }
 
 main() {
-  [[ $# -ge 1 && $# -le 2 ]] || {
+  [[ $# -le 2 ]] || {
         usage
         exit 2
     }
 
-  local account_id=$1
+  local account_id=${1:-}
   local role_name=${2:-github-actions-lambda-deploy}
   local owner
   local repository
@@ -100,6 +115,9 @@ main() {
   owner=${repository_data[0]}
   repository=${repository_data[1]}
 
+    if [[ -z $account_id ]]; then
+        account_id=$(get_account_id)
+    fi
     validate_input "AWS_ACCOUNT_ID" "$account_id" '^[0-9]{12}$'
     validate_input "ROLE_NAME" "$role_name" '^[A-Za-z0-9+=,.@_-]+$'
 
