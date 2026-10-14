@@ -2,15 +2,16 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+OIDC_URL=https://token.actions.githubusercontent.com
 
 usage() {
     cat <<'EOF'
 Uso: scripts/configure-aws.sh [AWS_ACCOUNT_ID] [ROLE_NAME]
 
-Obtiene OWNER/REPOSITORY desde el remoto origin y genera la trust policy para que
-GitHub Actions asuma un IAM role mediante OIDC. Si no se proporciona
+Obtiene OWNER/REPOSITORY desde el remoto origin y configura el proveedor OIDC y
+el IAM role para que GitHub Actions pueda asumirlo. Si no se proporciona
 AWS_ACCOUNT_ID, lo obtiene de la identidad AWS activa.
-La policy se escribe en .generated/aws/github-oidc-trust-policy.json.
+La trust policy se escribe en .generated/aws/github-oidc-trust-policy.json.
 EOF
 }
 
@@ -114,6 +115,43 @@ EOF
     printf 'Role esperado: arn:aws:iam::%s:role/%s\n' "$account_id" "$role_name"
 }
 
+  configure_oidc_provider() {
+    local account_id=$1
+    local provider_arn="arn:aws:iam::${account_id}:oidc-provider/token.actions.githubusercontent.com"
+
+    if AWS_PAGER="" aws iam get-open-id-connect-provider \
+      --open-id-connect-provider-arn "$provider_arn" >/dev/null 2>&1; then
+      printf 'Proveedor OIDC sin cambios: %s\n' "$provider_arn"
+      return
+    fi
+
+    AWS_PAGER="" aws iam create-open-id-connect-provider \
+      --url "$OIDC_URL" \
+      --client-id-list sts.amazonaws.com >/dev/null
+    printf 'Proveedor OIDC creado: %s\n' "$provider_arn"
+  }
+
+  configure_role() {
+    local account_id=$1
+    local role_name=$2
+    local policy_file=$3
+    local role_arn="arn:aws:iam::${account_id}:role/${role_name}"
+
+    if AWS_PAGER="" aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+      AWS_PAGER="" aws iam update-assume-role-policy \
+        --role-name "$role_name" \
+        --policy-document "file://${policy_file}"
+      printf 'Trust policy del role actualizada: %s\n' "$role_arn"
+      return
+    fi
+
+    AWS_PAGER="" aws iam create-role \
+      --role-name "$role_name" \
+      --assume-role-policy-document "file://${policy_file}" \
+      --description "GitHub Actions OIDC deployment role" >/dev/null
+    printf 'Role creado: %s\n' "$role_arn"
+  }
+
 main() {
   [[ $# -le 2 ]] || {
         usage
@@ -135,6 +173,8 @@ main() {
     validate_input "ROLE_NAME" "$role_name" '^[A-Za-z0-9+=,.@_-]+$'
 
     generate_trust_policy "$owner" "$repository" "$account_id" "$role_name" ".generated/aws"
+    configure_oidc_provider "$account_id"
+    configure_role "$account_id" "$role_name" ".generated/aws/github-oidc-trust-policy.json"
 }
 
 main "$@"

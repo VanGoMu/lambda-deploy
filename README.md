@@ -211,8 +211,8 @@ shellcheck scripts/configure-aws.sh scripts/configure-github.sh
 
 ### Configuracion AWS
 
-Genera la trust policy para el proveedor OIDC de GitHub. No crea ni modifica recursos
-en AWS; deja el JSON en `.generated/aws/` para revisarlo antes de aplicarlo al role:
+Configura de forma idempotente el proveedor OIDC de GitHub y el IAM role de despliegue.
+También deja la trust policy en `.generated/aws/` para revisarla:
 
 ```bash
 make configure-aws \
@@ -230,8 +230,9 @@ make configure-aws AWS_ACCOUNT_ID=123456789012
 Puedes seleccionar el perfil AWS antes de ejecutar el comando con
 `AWS_PROFILE=mi-perfil make configure-aws`.
 
-El proveedor OIDC y el IAM role deben existir en AWS. La politica de permisos del role
-debe cubrir los recursos que despliegue SAM y se debe revisar con el principio de menor
+El script crea el proveedor OIDC y el IAM role si no existen, o actualiza la trust
+policy si ya existen. El role se crea sin permisos de despliegue; debes asignarle una
+policy adecuada para `sam build` y `sam deploy`, revisada con el principio de menor
 privilegio.
 
 ### Configuracion GitHub
