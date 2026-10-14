@@ -91,9 +91,9 @@ flowchart TD
 		D --> A{UseApiGateway?}
 		A -->|true| H[HTTP API /hello]
 		A -->|false| N[Sin HTTP API]
-		L --> C{UseCanary?}
-		C -->|true| K[Canary 10% durante 5 min]
-		C -->|false| R[Publicacion directa]
+		L --> C{Canary habilitado?}
+		C -->|si| K[Canary 10% durante 5 min]
+		C -->|no| R[Publicacion directa]
 ```
 
 ## Configurar GitHub y AWS
@@ -173,12 +173,29 @@ Valores actuales:
 | Entorno | API | ALB | Canary | Confirmacion |
 | --- | --- | --- | --- | --- |
 | `dev` | No | No | No | No |
-| `staging` | Si | No | Si | No |
-| `prod` | Si | No | Si | Si |
+| `staging` | Si | No | No | No |
+| `prod` | Si | No | No | Si |
 
 Los archivos de `parameters/` son ejemplos informativos; los comandos `make deploy-*`
 usan `samconfig.toml`, no esos JSON. Para habilitar ALB hay que pasar
 `AlbSubnetIds` y `AlbSecurityGroupId` y revisar la red de la cuenta.
+
+### Habilitar canary
+
+Actualmente el canary está deshabilitado para todos los entornos porque la cuenta AWS
+debe tener CodeDeploy disponible; sin esa suscripción SAM falla al crear
+`ServerlessDeploymentApplication`. Para habilitarlo:
+
+1. Confirma que CodeDeploy está disponible en la cuenta y región `eu-west-1`.
+2. Verifica que el role de GitHub tenga los permisos `codedeploy:*` necesarios y que
+	`configure-aws.sh` se haya ejecutado después de cualquier cambio de permisos.
+3. En `template.yaml`, cambia `DeploymentPreference.Enabled` de `false` a `true`.
+4. Ejecuta `sam validate --lint` y despliega primero en `staging`.
+
+La configuración actual no activa canary por entorno mediante `UseCanary`: SAM requiere
+que `DeploymentPreference.Type` sea estático durante la transformación. Si se necesita
+canary solo en `staging` y `prod`, hay que mantener plantillas separadas o usar una
+plantilla transformada específica para esos entornos.
 
 ## Estructura
 
