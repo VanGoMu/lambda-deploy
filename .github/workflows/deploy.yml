@@ -58,7 +58,10 @@ jobs:
               cloudformation:ExecuteChangeSet \
               s3:CreateBucket \
               s3:PutObject \
+              s3:GetBucketPolicy \
               s3:PutBucketPublicAccessBlock \
+              s3:PutBucketPolicy \
+              s3:DeleteBucketPolicy \
               s3:PutBucketVersioning \
               s3:PutEncryptionConfiguration \
               s3:TagResource \
