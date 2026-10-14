@@ -119,9 +119,13 @@ policy que permita a GitHub emitir tokens OIDC solo para este repositorio, la ra
 			"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
 			"StringLike": {"token.actions.githubusercontent.com:sub": [
 				"repo:OWNER/REPOSITORY:ref:refs/heads/main",
+				"repo:OWNER@*/REPOSITORY@*:ref:refs/heads/main",
 				"repo:OWNER/REPOSITORY:environment:dev",
 				"repo:OWNER/REPOSITORY:environment:staging",
-				"repo:OWNER/REPOSITORY:environment:prod"
+				"repo:OWNER/REPOSITORY:environment:prod",
+				"repo:OWNER@*/REPOSITORY@*:environment:dev",
+				"repo:OWNER@*/REPOSITORY@*:environment:staging",
+				"repo:OWNER@*/REPOSITORY@*:environment:prod"
 			]}
 		}
 	}]
@@ -231,9 +235,9 @@ Puedes seleccionar el perfil AWS antes de ejecutar el comando con
 `AWS_PROFILE=mi-perfil make configure-aws`.
 
 El script crea el proveedor OIDC y el IAM role si no existen, o actualiza la trust
-policy si ya existen. El role se crea sin permisos de despliegue; debes asignarle una
-policy adecuada para `sam build` y `sam deploy`, revisada con el principio de menor
-privilegio.
+policy si ya existen. También aplica la policy inline `github-actions-deploy` con los
+permisos necesarios para los recursos definidos en `template.yaml`. Revisa y ajusta
+esa policy antes de usarla en producción.
 
 ### Configuracion GitHub
 

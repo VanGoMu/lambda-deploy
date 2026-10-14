@@ -12,6 +12,7 @@ Obtiene OWNER/REPOSITORY desde el remoto origin y configura el proveedor OIDC y
 el IAM role para que GitHub Actions pueda asumirlo. Si no se proporciona
 AWS_ACCOUNT_ID, lo obtiene de la identidad AWS activa.
 La trust policy se escribe en .generated/aws/github-oidc-trust-policy.json.
+La policy de despliegue se escribe en .generated/aws/github-actions-deploy-policy.json.
 EOF
 }
 
@@ -94,9 +95,13 @@ generate_trust_policy() {
         "StringLike": {
           "token.actions.githubusercontent.com:sub": [
             "repo:${owner}/${repository}:ref:refs/heads/main",
+            "repo:${owner}@*/${repository}@*:ref:refs/heads/main",
             "repo:${owner}/${repository}:environment:dev",
             "repo:${owner}/${repository}:environment:staging",
-            "repo:${owner}/${repository}:environment:prod"
+            "repo:${owner}/${repository}:environment:prod",
+            "repo:${owner}@*/${repository}@*:environment:dev",
+            "repo:${owner}@*/${repository}@*:environment:staging",
+            "repo:${owner}@*/${repository}@*:environment:prod"
           ]
         }
       }
@@ -152,6 +157,117 @@ EOF
     printf 'Role creado: %s\n' "$role_arn"
   }
 
+configure_role_permissions() {
+    local role_name=$1
+    local policy_file=$2
+
+    AWS_PAGER="" aws iam put-role-policy \
+      --role-name "$role_name" \
+      --policy-name github-actions-deploy \
+      --policy-document "file://${policy_file}" >/dev/null
+    printf 'Policy de despliegue aplicada al role: %s\n' "$role_name"
+  }
+
+generate_deployment_policy() {
+    local output_dir=$1
+    local output_file="$output_dir/github-actions-deploy-policy.json"
+    local temp_file
+
+    mkdir -p "$output_dir"
+    temp_file=$(mktemp "$output_dir/.github-actions-deploy-policy.json.XXXXXX")
+    cat > "$temp_file" <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:CreateStack",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DeleteStack",
+        "cloudformation:Describe*",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:GetTemplate",
+        "cloudformation:List*",
+        "cloudformation:UpdateStack",
+        "s3:CreateBucket",
+        "s3:DeleteObject",
+        "s3:GetBucketLocation",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "lambda:AddPermission",
+        "lambda:CreateAlias",
+        "lambda:CreateFunction",
+        "lambda:DeleteAlias",
+        "lambda:DeleteFunction",
+        "lambda:DeleteFunctionUrlConfig",
+        "lambda:Get*",
+        "lambda:List*",
+        "lambda:PublishVersion",
+        "lambda:RemovePermission",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:UpdateAlias",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "iam:AttachRolePolicy",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:GetRole",
+        "iam:PassRole",
+        "iam:PutRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "apigateway:DELETE",
+        "apigateway:GET",
+        "apigateway:PATCH",
+        "apigateway:POST",
+        "apigateway:PUT",
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:CreateTargetGroup",
+        "elasticloadbalancing:DeleteListener",
+        "elasticloadbalancing:DeleteLoadBalancer",
+        "elasticloadbalancing:DeleteTargetGroup",
+        "elasticloadbalancing:Describe*",
+        "elasticloadbalancing:ModifyListener",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:PutMetricAlarm",
+        "sns:CreateTopic",
+        "sns:DeleteTopic",
+        "sns:GetTopicAttributes",
+        "sns:ListSubscriptionsByTopic",
+        "sns:SetTopicAttributes",
+        "sns:Subscribe",
+        "sns:Unsubscribe",
+        "codedeploy:CreateApplication",
+        "codedeploy:CreateDeploymentGroup",
+        "codedeploy:DeleteApplication",
+        "codedeploy:DeleteDeploymentGroup",
+        "codedeploy:Get*",
+        "codedeploy:List*",
+        "codedeploy:UpdateDeploymentGroup"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+
+    if [[ -f "$output_file" ]] && cmp -s "$temp_file" "$output_file"; then
+        rm -f -- "$temp_file"
+    else
+        mv -- "$temp_file" "$output_file"
+    fi
+    printf '%s\n' "$output_file"
+  }
+
 main() {
   [[ $# -le 2 ]] || {
         usage
@@ -173,8 +289,10 @@ main() {
     validate_input "ROLE_NAME" "$role_name" '^[A-Za-z0-9+=,.@_-]+$'
 
     generate_trust_policy "$owner" "$repository" "$account_id" "$role_name" ".generated/aws"
+    deployment_policy_file=$(generate_deployment_policy ".generated/aws")
     configure_oidc_provider "$account_id"
     configure_role "$account_id" "$role_name" ".generated/aws/github-oidc-trust-policy.json"
+    configure_role_permissions "$role_name" "$deployment_policy_file"
 }
 
 main "$@"
