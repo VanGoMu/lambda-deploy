@@ -46,6 +46,31 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
+      - name: Validate SAM permissions
+        env:
+          ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          denied=$(aws iam simulate-principal-policy \
+            --policy-source-arn "$ROLE_ARN" \
+            --action-names \
+              cloudformation:CreateChangeSet \
+              cloudformation:CreateStack \
+              cloudformation:ExecuteChangeSet \
+              s3:CreateBucket \
+              s3:PutObject \
+              s3:PutBucketPublicAccessBlock \
+              s3:PutBucketVersioning \
+              s3:PutEncryptionConfiguration \
+              s3:TagResource \
+              iam:PassRole \
+            --resource-arns '*' \
+            --query 'EvaluationResults[?EvalDecision!=`allowed`].[EvalActionName,EvalDecision]' \
+            --output text)
+          if [[ -n "$denied" ]]; then
+            echo "::error::SAM permissions denied:"
+            printf '%s\n' "$denied"
+            exit 1
+          fi
       - uses: aws-actions/setup-sam@v2
       - run: sam build
       - run: sam deploy --config-env ${{ inputs.environment || 'dev' }} --no-confirm-changeset --no-fail-on-empty-changeset
